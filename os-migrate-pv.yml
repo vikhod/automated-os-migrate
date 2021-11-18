@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: os-migrate-pv
+spec:
+  storageClassName: ""
+  capacity:
+    storage: 10Gi #Have to be chenged
+  volumeMode: Filesystem
+  accessModes:
+  - ReadWriteOnce
+  local:
+    path: /home/ubuntu/os-migrate #set it corectly before run, depends on node configuration
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+       - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - argo-single-node #set it corectly before run, depends on node configuration

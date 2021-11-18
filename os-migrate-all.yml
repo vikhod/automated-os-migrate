@@ -1,0 +1,503 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: os-migrate-with-mult-
+spec:
+  entrypoint: run-graph
+  volumes:
+  - name: os-migrate-pvc
+    persistentVolumeClaim:
+      claimName: os-migrate-pvc
+
+### Dag for inserted projects
+  templates:
+  - name: run-graph
+    dag:
+      tasks:
+
+      - name: export-projects
+        template: projects
+        arguments:
+          parameters:
+          - name: direction
+            value: export
+
+      - name: import-projects
+        template: projects
+        dependencies: [manual-approve-export]
+        arguments:
+          parameters:
+          - name: direction
+            value: import
+      
+      - name: export-users
+        template: users
+        arguments:
+          parameters:
+          - name: direction
+            value: export
+
+      - name: import-users
+        template: users
+        dependencies: [import-projects]
+        arguments:
+          parameters:
+          - name: direction
+            value: import
+
+#      - name: export-users-keypairs
+#        template: users-keypairs
+#        arguments:
+#          parameters:
+#          - name: direction
+#            value: export
+#
+#      - name: import-users-keypairs
+#        template: users-keypairs
+#        dependencies: [import-users]
+#        arguments:
+#          parameters:
+#          - name: direction
+#            value: import
+
+      - name: export-images
+        template: images
+        arguments:
+          parameters:
+          - name: direction
+            value: export
+
+      - name: import-images
+        template: images
+        dependencies: [import-users]
+        arguments:
+          parameters:
+          - name: direction
+            value: import
+
+      - name: export-flavors
+        template: flavors
+        arguments:
+          parameters:
+          - name: direction
+            value: export
+      
+      - name: import-flavors
+        template: flavors
+        dependencies: [import-users]
+        arguments:
+          parameters:
+          - name: direction
+            value: import
+
+      - name: manual-approve-export
+        dependencies: [export-projects, export-users, export-images, export-flavors]
+        template: manual-approve
+
+      - name: multiply-os-migrate-vars
+        template: multiply-os-migrate-vars
+        dependencies: [import-images, import-flavors] #, import-users-keypairs]
+      
+      - name: migrate-metadata-single-project
+        template: migrate-metadata-single-project
+        arguments:
+          parameters:
+          - name: project
+            value: "{{item}}"
+        withParam: "{{tasks.multiply-os-migrate-vars.outputs.result}}"
+        dependencies: [multiply-os-migrate-vars]
+            
+### Steps for single project:
+  - name: migrate-metadata-single-project
+    inputs:
+      parameters:
+      - name: project
+    dag:
+      tasks:
+
+
+### for keypairs
+      - name: export-keypairs
+        template: keypairs
+        arguments:
+          parameters:
+          - name: project
+            value: "{{inputs.parameters.project}}"
+          - name: direction
+            value: export
+
+      - name: import-keypairs
+        template: keypairs
+        dependencies: [manual-approve-export]
+        arguments:
+          parameters:
+          - name: project
+            value: "{{inputs.parameters.project}}"
+          - name: direction
+            value: import
+
+### for networks
+      - name: export-networks
+        template: networks
+        arguments:
+          parameters:
+          - name: project
+            value: "{{inputs.parameters.project}}"
+          - name: direction
+            value: export
+
+      - name: import-networks
+        template: networks
+        dependencies: [manual-approve-export]
+        arguments:
+          parameters:
+          - name: project
+            value: "{{inputs.parameters.project}}"
+          - name: direction
+            value: import
+
+### for subnets
+      - name: export-subnets
+        template: subnets
+        arguments:
+          parameters:
+          - name: project
+            value: "{{inputs.parameters.project}}"
+          - name: direction
+            value: export
+
+      - name: import-subnets
+        template: subnets
+        dependencies: [import-networks]
+        arguments:
+          parameters:
+          - name: project
+            value: "{{inputs.parameters.project}}"
+          - name: direction
+            value: import
+
+### for routers
+      - name: export-routers
+        template: routers
+        arguments:
+          parameters:
+          - name: project
+            value: "{{inputs.parameters.project}}"
+          - name: direction
+            value: export
+
+      - name: import-routers
+        template: routers
+        dependencies: [import-subnets]
+        arguments:
+          parameters:
+          - name: project
+            value: "{{inputs.parameters.project}}"
+          - name: direction
+            value: import
+
+### for router-interfaces
+      - name: export-router-interfaces
+        template: router-interfaces
+        arguments:
+          parameters:
+          - name: project
+            value: "{{inputs.parameters.project}}"
+          - name: direction
+            value: export
+
+      - name: import-router-interfaces
+        template: router-interfaces
+        dependencies: [import-routers]
+        arguments:
+          parameters:
+          - name: project
+            value: "{{inputs.parameters.project}}"
+          - name: direction
+            value: import
+
+### for security-groups
+      - name: export-security-groups
+        template: security-groups
+        arguments:
+          parameters:
+          - name: project
+            value: "{{inputs.parameters.project}}"
+          - name: direction
+            value: export
+
+      - name: import-security-groups
+        template: security-groups
+        dependencies: [manual-approve-export]
+        arguments:
+          parameters:
+          - name: project
+            value: "{{inputs.parameters.project}}"
+          - name: direction
+            value: import
+
+### for security-groups-rules
+#      - name: export-security-groups-rules
+#        template: security-groups-rules
+#        arguments:
+#          parameters:
+#          - name: project
+#           value: "{{inputs.parameters.project}}"
+#          - name: direction
+#            value: export
+#
+#      - name: import-security-groups-rules
+#        template: security-groups-rules
+#        dependencies: [import-security-groups]
+#        arguments:
+#          parameters:
+#          - name: project
+#            value: "{{inputs.parameters.project}}"
+#          - name: direction
+#            value: import
+
+### for manual-approve
+      - name: manual-approve-export
+        dependencies: [export-keypairs, export-networks, export-subnets, export-routers, export-router-interfaces, export-security-groups]
+        template: manual-approve
+
+
+### Containers
+  - name: manual-approve
+    suspend: {}
+
+  - name: projects
+    inputs:
+      parameters:
+      - name: direction
+    container:
+      image: vikhod/os-migrate:latest
+      volumeMounts:
+       - name: os-migrate-pvc
+         mountPath: "/os-migrate"
+      env:
+      - name: OSM_DIR
+        value: "/root/.ansible/collections/ansible_collections/os_migrate/os_migrate"
+      - name: OSM_CMD
+        value: "ansible-playbook -v -i $OSM_DIR/localhost_inventory.yml -e @os-migrate-vars.yml"
+      command: ['sh', '-c', "$OSM_CMD $OSM_DIR/playbooks/{{inputs.parameters.direction}}_projects.yml"]
+
+  - name: images
+    inputs:
+      parameters:
+      - name: direction
+    container:
+      image: vikhod/os-migrate:latest
+      volumeMounts:
+       - name: os-migrate-pvc
+         mountPath: "/os-migrate"
+      env:
+      - name: OSM_DIR
+        value: "/root/.ansible/collections/ansible_collections/os_migrate/os_migrate"
+      - name: OSM_CMD
+        value: "ansible-playbook -v -i $OSM_DIR/localhost_inventory.yml -e @os-migrate-vars.yml"
+      command: ['sh', '-c', "$OSM_CMD $OSM_DIR/playbooks/{{inputs.parameters.direction}}_images.yml"]
+  
+  - name: users
+    inputs:
+      parameters:
+      - name: direction
+    container:
+      image: vikhod/os-migrate:latest
+      volumeMounts:
+      - name: os-migrate-pvc
+        mountPath: "/os-migrate"
+      env:
+      - name: OSM_DIR
+        value: "/root/.ansible/collections/ansible_collections/os_migrate/os_migrate"
+      - name: OSM_CMD
+        value: "ansible-playbook -v -i $OSM_DIR/localhost_inventory.yml -e @os-migrate-vars.yml"
+      command: ['sh', '-c', "$OSM_CMD $OSM_DIR/playbooks/{{inputs.parameters.direction}}_users.yml"]
+
+  - name: flavors
+    inputs:
+      parameters:
+      - name: direction
+    container:
+      image: vikhod/os-migrate:latest
+      volumeMounts:
+      - name: os-migrate-pvc
+        mountPath: "/os-migrate"
+      env:
+      - name: OSM_DIR
+        value: "/root/.ansible/collections/ansible_collections/os_migrate/os_migrate"
+      - name: OSM_CMD
+        value: "ansible-playbook -v -i $OSM_DIR/localhost_inventory.yml -e @os-migrate-vars.yml"
+      command: ['sh', '-c', "$OSM_CMD $OSM_DIR/playbooks/{{inputs.parameters.direction}}_flavors.yml"]
+
+  - name: users-keypairs
+    inputs:
+      parameters:
+      - name: direction
+    container:
+      image: vikhod/os-migrate:latest
+      volumeMounts:
+      - name: os-migrate-pvc
+        mountPath: "/os-migrate"
+      env:
+      - name: OSM_DIR
+        value: "/root/.ansible/collections/ansible_collections/os_migrate/os_migrate"
+      - name: OSM_CMD
+        value: "ansible-playbook -v -i $OSM_DIR/localhost_inventory.yml -e @os-migrate-vars.yml"
+      command: ['sh', '-c', "$OSM_CMD $OSM_DIR/playbooks/{{inputs.parameters.direction}}_users_keypairs.yml"]
+
+  - name: multiply-os-migrate-vars
+    script:
+      image: vikhod/shyaml:latest
+      volumeMounts:
+       - name: os-migrate-pvc
+         mountPath: "/os-migrate"
+      command: [bash]
+      source: |
+        i=0
+        projects=""
+        while :
+        do
+        project=$(cat projects.yml | shyaml --quiet get-value resources."$i".params.name) 
+        if [ -z "$project" ]
+        then
+          break
+        else 
+          projects[$i]=$project
+        fi
+        ((i++))
+        done
+        
+        for project in ${projects[@]}
+        do
+          mkdir -p $project
+          cp os-migrate-vars.yml $project/os-migrate-vars.yml
+          sed -i "s|project_name: admin|project_name: $project|g" $project/os-migrate-vars.yml
+          sed -i "s|os_migrate_data_dir: /os-migrate|os_migrate_data_dir: /os-migrate/$project|g" $project/os-migrate-vars.yml
+          sed -i '/os_migrate_projects_filter:/,$d' $project/os-migrate-vars.yml
+        done
+        printf '%s\n' "${projects[@]}" | jq -R . | jq -s .
+
+        
+
+
+
+  
+  - name: security-groups
+    inputs:
+      parameters:
+      - name: project
+      - name: direction
+    container:
+      image: vikhod/os-migrate:latest
+      volumeMounts:
+      - name: os-migrate-pvc
+        mountPath: "/os-migrate"
+      env:
+      - name: OSM_DIR
+        value: "/root/.ansible/collections/ansible_collections/os_migrate/os_migrate"
+      - name: OSM_CMD
+        value: "ansible-playbook -v -i $OSM_DIR/localhost_inventory.yml -e @{{inputs.parameters.project}}/os-migrate-vars.yml"
+      command: ['sh', '-c', "$OSM_CMD $OSM_DIR/playbooks/{{inputs.parameters.direction}}_security_groups.yml"]
+
+  - name: security-groups-rules
+    inputs:
+      parameters:
+      - name: project
+      - name: direction
+    container:
+      image: vikhod/os-migrate:latest
+      volumeMounts:
+      - name: os-migrate-pvc
+        mountPath: "/os-migrate"
+      env:
+      - name: OSM_DIR
+        value: "/root/.ansible/collections/ansible_collections/os_migrate/os_migrate"
+      - name: OSM_CMD
+        value: "ansible-playbook -v -i $OSM_DIR/localhost_inventory.yml -e @{{inputs.parameters.project}}/os-migrate-vars.yml"
+      command: ['sh', '-c', "$OSM_CMD $OSM_DIR/playbooks/{{inputs.parameters.direction}}_security_group_rules.yml"]
+
+  - name: networks
+    inputs:
+      parameters:
+      - name: project
+      - name: direction
+    container:
+      image: vikhod/os-migrate:latest
+      volumeMounts:
+      - name: os-migrate-pvc
+        mountPath: "/os-migrate"
+      env:
+      - name: OSM_DIR
+        value: "/root/.ansible/collections/ansible_collections/os_migrate/os_migrate"
+      - name: OSM_CMD
+        value: "ansible-playbook -v -i $OSM_DIR/localhost_inventory.yml -e @{{inputs.parameters.project}}/os-migrate-vars.yml"
+      command: ['sh', '-c', "$OSM_CMD $OSM_DIR/playbooks/{{inputs.parameters.direction}}_networks.yml"]
+
+  - name: subnets
+    inputs:
+      parameters:
+      - name: project
+      - name: direction
+    container:
+      image: vikhod/os-migrate:latest
+      volumeMounts:
+      - name: os-migrate-pvc
+        mountPath: "/os-migrate"
+      env:
+      - name: OSM_DIR
+        value: "/root/.ansible/collections/ansible_collections/os_migrate/os_migrate"
+      - name: OSM_CMD
+        value: "ansible-playbook -v -i $OSM_DIR/localhost_inventory.yml -e @{{inputs.parameters.project}}/os-migrate-vars.yml"
+      command: ['sh', '-c', "$OSM_CMD $OSM_DIR/playbooks/{{inputs.parameters.direction}}_subnets.yml"]
+
+  - name: routers
+    inputs:
+      parameters:
+      - name: project
+      - name: direction
+    container:
+      image: vikhod/os-migrate:latest
+      volumeMounts:
+      - name: os-migrate-pvc
+        mountPath: "/os-migrate"
+      env:
+      - name: OSM_DIR
+        value: "/root/.ansible/collections/ansible_collections/os_migrate/os_migrate"
+      - name: OSM_CMD
+        value: "ansible-playbook -v -i $OSM_DIR/localhost_inventory.yml -e @{{inputs.parameters.project}}/os-migrate-vars.yml"
+      command: ['sh', '-c', "$OSM_CMD $OSM_DIR/playbooks/{{inputs.parameters.direction}}_routers.yml"]
+
+  - name: router-interfaces
+    inputs:
+      parameters:
+      - name: project
+      - name: direction
+    container:
+      image: vikhod/os-migrate:latest
+      volumeMounts:
+      - name: os-migrate-pvc
+        mountPath: "/os-migrate"
+      env:
+      - name: OSM_DIR
+        value: "/root/.ansible/collections/ansible_collections/os_migrate/os_migrate"
+      - name: OSM_CMD
+        value: "ansible-playbook -v -i $OSM_DIR/localhost_inventory.yml -e @{{inputs.parameters.project}}/os-migrate-vars.yml"
+      command: ['sh', '-c', "$OSM_CMD $OSM_DIR/playbooks/{{inputs.parameters.direction}}_router_interfaces.yml"]
+
+  - name: keypairs
+    inputs:
+      parameters:
+      - name: project
+      - name: direction
+    container:
+      image: vikhod/os-migrate:latest
+      volumeMounts:
+      - name: os-migrate-pvc
+        mountPath: "/os-migrate"
+      env:
+      - name: OSM_DIR
+        value: "/root/.ansible/collections/ansible_collections/os_migrate/os_migrate"
+      - name: OSM_CMD
+        value: "ansible-playbook -v -i $OSM_DIR/localhost_inventory.yml -e @{{inputs.parameters.project}}/os-migrate-vars.yml"
+      command: ['sh', '-c', "$OSM_CMD $OSM_DIR/playbooks/{{inputs.parameters.direction}}_keypairs.yml"]
