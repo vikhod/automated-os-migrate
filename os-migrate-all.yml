@@ -115,7 +115,6 @@ spec:
     dag:
       tasks:
 
-
 ### for keypairs
       - name: export-keypairs
         template: keypairs
@@ -237,30 +236,29 @@ spec:
             value: import
 
 ### for security-groups-rules
-#      - name: export-security-groups-rules
-#        template: security-groups-rules
-#        arguments:
-#          parameters:
-#          - name: project
-#           value: "{{inputs.parameters.project}}"
-#          - name: direction
-#            value: export
-#
-#      - name: import-security-groups-rules
-#        template: security-groups-rules
-#        dependencies: [import-security-groups]
-#        arguments:
-#          parameters:
-#          - name: project
-#            value: "{{inputs.parameters.project}}"
-#          - name: direction
-#            value: import
+      - name: export-security-groups-rules
+        template: security-groups-rules
+        arguments:
+          parameters:
+          - name: project
+            value: "{{inputs.parameters.project}}"
+          - name: direction
+            value: export
+
+      - name: import-security-groups-rules
+        template: security-groups-rules
+        dependencies: [import-security-groups]
+        arguments:
+          parameters:
+          - name: project
+            value: "{{inputs.parameters.project}}"
+          - name: direction
+            value: import
 
 ### for manual-approve
       - name: manual-approve-export
         dependencies: [export-keypairs, export-networks, export-subnets, export-routers, export-router-interfaces, export-security-groups]
         template: manual-approve
-
 
 ### Containers
   - name: manual-approve
@@ -378,11 +376,6 @@ spec:
         done
         printf '%s\n' "${projects[@]}" | jq -R . | jq -s .
 
-        
-
-
-
-  
   - name: security-groups
     inputs:
       parameters:

@@ -5,12 +5,12 @@ metadata:
 spec:
   storageClassName: ""
   capacity:
-    storage: 10Gi #Have to be chenged
+    storage: 10Gi #Check it!
   volumeMode: Filesystem
   accessModes:
   - ReadWriteOnce
   local:
-    path: /home/ubuntu/os-migrate #set it corectly before run, depends on node configuration
+    path: /home/ubuntu/os-migrate #Check it!
   nodeAffinity:
     required:
       nodeSelectorTerms:
@@ -18,4 +18,4 @@ spec:
        - key: kubernetes.io/hostname
           operator: In
           values:
-          - argo-single-node #set it corectly before run, depends on node configuration
+          - argo-single-node #Check it!
